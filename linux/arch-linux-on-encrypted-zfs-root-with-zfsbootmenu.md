@@ -377,13 +377,10 @@ $ pacman -Syu
 ```
 $ pacman -Sy \
   hwinfo \
-  openssh \
   man-db \
   less \
-  ufw \
   tmux \
-  unzip \
-  rsync 
+  unzip
 ```
 
 ```
@@ -395,10 +392,15 @@ $ cd paru && makepkg -si && cd ~
 
 ```
 $ pacman -Sy \
-  neovim 
+  openssh \
+  ufw \
+  rsync
 ```
 
-Clojure & Java
+```
+$ pacman -Sy \
+  neovim 
+```
 
 ```
 $ pacman -Sy \
@@ -440,18 +442,41 @@ $ pacman -Sy \
   bluez \
   bluez-utils \ 
   bluez-tools
+
+$ bluetoothctl
 ```
 
 ```
-$ pacman -Sy 
+$ pacman -Sy \
   cups
+```
+
+```
+$ pacman -Sy \
+  seatd
 ```
 
 ```
 $ pacman -Sy \
   wayland \
   wl-clipboard \
-  wlr-randr
+  wlr-randr \
+  wlroots \
+  clipman
+```
+
+```
+$ pacman -Sy \
+  ttf-hack-nerd \
+  ttf-font-awesome
+```
+
+```
+$ pacman -Sy \
+  waybar \
+  wofi \
+  foot \
+  kitty
 ```
 
 ```
@@ -460,24 +485,13 @@ $ pacman -Sy \
   swaylock \
   swayidle \
   swaybg \
-  autotiling \
-  waybar \
-  wofi \
-  foot \
-  ttf-hack-nerd \
-  ttf-font-awesome
-
-$ paru -S \
-  clipman
+  autotiling 
 ```
 
 ```
 $ pacman -Sy \
   hyprland \
-  wlroots \
-  seatd \
-  xdg-desktop-portal-hyprland \
-  kitty
+  xdg-desktop-portal-hyprland
 ```
 
 ```
