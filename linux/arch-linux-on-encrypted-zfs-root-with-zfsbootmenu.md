@@ -1,0 +1,485 @@
+
+# Arch Linux on encrypted ZFS Root Installation Guide
+
+Early stage guide of capturing steps for a custom Arch Linux installation process 
+to enable ZFS, with native encryption, as the root file system.
+
+The application ZFSBootMenu is used to manage the boot process.
+
+Steps will be documented at some point in the future.
+
+## Create Live Installation ISO
+
+Alpine Extended
+
+### Download
+
+### Image
+
+## Boot Live ISO
+
+Login as root. No password.
+
+### Setup Network Devices
+
+```
+$ setup-interfaces -r
+```
+
+```
+$ rc-service networking restart
+```
+
+```
+$ ping archlinux.org
+```
+
+### Add Support Packages 
+
+```
+$ setup-apkrepos
+$ apk update
+```
+
+```
+$ apk add sgdisk parted curl wget util-linux vim nano zfs efibootmgr zstd tar
+```
+
+### Partition Disks
+
+```
+export DISK_1="/dev/nvme0n1"
+export EFI_PART="p1"
+export ZFS_PART="p2"
+```
+
+```
+wipefs --all --force "$DISK_1"
+```
+
+```
+$ sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI: System Partition" $DISK_1
+$ sgdisk -n 2:0:0 -t 2:bf00 -c 2:"ZFS Pool Member" $DISK_1
+```
+
+```
+$ partx -u $DISK_1
+$ mdev -s
+```
+
+### Erase EFI Boot Entries
+
+```
+efibootmgr
+
+# All boot entries will be deleted. Ensure this is ok!
+
+efibootmgr \
+  | grep -E "^Boot[0-9]{4}" \
+  | awk '{print $1}' \
+  | sed 's/Boot//g; s/\*//g' \
+  | while read -r ENTRY; do efibootmgr -b $ENTRY -B; done
+```
+
+### Create EFI Boot Filesystems
+
+```
+$ mkfs.vfat -F32 "$DISK_1$EFI_PART"
+```
+
+### Create ZFS Encryption Key
+
+```
+$ mkdir -p /etc/zfs
+$ echo "my-encryption-key" > /etc/zfs/zroot.key
+$ chmod 000 /etc/zfs/zroot.key
+```
+
+### Create ZFS Pool
+
+```
+$ modprobe zfs
+```
+
+
+```
+$ zpool create \
+  -f \
+  -o ashift=12 \
+  -o autotrim=on \
+  -O acltype=posixacl \
+  -O xattr=sa \
+  -O relatime=on \
+  -O compression=lz4 \
+  -O encryption=aes-256-gcm \
+  -O keylocation=file:///etc/zfs/zroot.key \
+  -O keyformat=passphrase \
+  -m none \
+  zroot \
+  $DISK_1$ZFS_PART
+```
+
+Ensure it's correct.
+
+```
+$ zpool status
+```
+
+### Create ZFS Data Sets
+
+```
+$ zfs create -o mountpoint=none zroot/ROOT
+$ zfs create -o mountpoint=/ -o canmount=noauto zroot/ROOT/arch
+```
+
+```
+$ zfs create -o mountpoint=/home zroot/home
+```
+
+```
+$ zpool set bootfs=zroot/ROOT/arch zroot
+```
+
+```
+$ zfs umount -a
+$ zpool export -a
+```
+
+### Mount ZFS datasets for Arch bootstrap
+
+```
+$ zpool import -N -R /mnt zroot
+$ zfs load-key -a
+
+$ zfs mount zroot/ROOT/arch
+$ zfs mount zroot/home
+
+$ df -h | grep "/mnt"
+```
+
+### Mount EFI boot partitions
+
+```
+$ mkdir -p /mnt/boot/efi
+$ mount $DISK_1$EFI_PART /mnt/boot/efi
+```
+
+### Download and extract Arch Bootstrap Image
+
+```
+$ curl -L https://geo.mirror.pkgbuild.com/iso/latest/archlinux-bootstrap-x86_64.tar.zst \
+  | zstd -d \
+  | tar -x -C /mnt --strip-components=1
+```
+
+### Prepare Chroot 
+
+```
+$ cp /etc/resolv.conf /mnt/etc/resolv.conf
+```
+
+```
+$ mkdir -p /mnt/etc/zfs && cp /etc/zfs/zroot.key /mnt/etc/zfs/zroot.key
+```
+
+```
+$ vi /mnt/etc/pacman.d/mirrorlist:w
+
+```
+
+```
+$ mount --rbind /proc /mnt/proc
+$ mount --rbind /sys /mnt/sys
+$ mount --rbind /dev /mnt/dev
+```
+
+### Enter Arch Bootstrap Chroot
+
+```
+$ chroot /mnt
+```
+
+```
+$ ln -sf /proc/self/mounts /etc/mtab
+```
+
+```
+$ pacman-key --init
+$ pacman-key --populate archlinux
+```
+
+```
+$ echo -e "\n[archzfs]\nServer = https://archzfs.com/\$repo/\$arch\nSigLevel = Optional TrustAll" >> /etc/pacman.conf
+```
+
+### Install Base Arch Packages
+
+```
+$ pacman -Sy
+```
+
+```
+$ pacman -Sy \
+  base \
+  base-devel \
+  linux \
+  linux-headers \
+  intel-ucode \
+  linux-firmware \
+  sof-firmware \
+  fwupd \
+  networkmanager \
+  iwd \
+  dhclient \
+  sudo \
+  vim \
+  nano \
+  wget \
+  curl \
+  git \
+  zfs-dkms \
+  zfs-utils \
+  efibootmgr \
+  fakeroot \
+  debugedit
+```
+
+### Configure Base Arch Chroot
+
+```
+$ ln -sf /usr/share/zoneinfo/US/Pacific /etc/localtime
+$ hwclock --systohc
+```
+
+```
+$ echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+$ echo "LANG=en_US.UTF-8" > /etc/locale.conf
+$ locale-gen
+```
+
+```
+$ echo "localhost" > /etc/hostname
+```
+
+```
+$ echo "$DISK_1$EFI_PART /boot/efi vfat defaults,noatime 0 2" >> /etc/fstab
+$ echo "tmpfs /tmp tmpfs rw,nosuid,nodev,noexec,relatime,size=4G 0 0" >> /etc/fstab
+```
+
+```
+passwd
+```
+
+### Prepare ZFS Installation
+
+```
+$ zgenhostid $(hostid)
+```
+
+```
+$ systemctl enable \
+  zfs-import-cache \
+  zfs-mount \
+  zfs.target \
+  iwd \
+  NetworkManager \
+  fwupd
+```
+
+
+
+```
+$ echo 'FILES+=(/etc/zfs/zroot.key)' >> /etc/mkinitcpio.conf
+$ sed -i 's|filesystems|zfs filesystems|' /etc/mkinitcpio.conf
+
+$ zfs set org.zfsbootmenu:commandline="rw quiet" zroot/ROOT
+$ zfs set org.zfsbootmenu:keysource="" zroot
+```
+
+### Download, Build, Install ZFSBootMenu
+
+```
+$ useradd -m -G wheel builduser
+$ echo "builduser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+```
+
+```
+$ su - builduser
+```
+
+```
+$ git clone https://aur.archlinux.org/perl-boolean.git
+$ cd perl-boolean && makepkg -si --noconfirm && cd ~
+```
+
+```
+$ git clone https://aur.archlinux.org/perl-sort-versions.git
+$ cd perl-sort-versions && makepkg -si --noconfirm && cd ~
+```
+
+```
+$ git clone https://aur.archlinux.org/perl-yaml-pp.git
+$ cd perl-yaml-pp && makepkg -si --noconfirm && cd ~
+```
+
+```
+$ git clone https://aur.archlinux.org/zfsbootmenu.git
+$ cd zfsbootmenu && makepkg -si --noconfirm && cd ~
+```
+
+```
+$ exit
+$ userdel -r builduser
+$ sed -i /builduser/d' /etc/sudoers
+```
+
+### Configure ZFSBootMenu
+
+```
+# See https://docs.zfsbootmenu.org/en/v3.0.x/general/mkinitcpio.html
+$ vim /etc/zfsbootmenu/config.yaml
+```
+
+```
+$ sed -i 's|filesystems|zfs filesystems|' /etc/zfsbootmenu/mkinitcpio.conf
+```
+
+### Build Ramdisk
+
+```
+$ generate-zbm
+```
+
+### Configure EFI Entries
+
+```
+$ efibootmgr -c -d "$DISK_1" -p 1 \
+  -L "ZFSBootMenu (NVME1)" \
+  -l '\EFI\ZBM\VMLINUZ.EFI'
+```
+
+### Exit chroot, Unmount ZFS datasets, Reboot
+
+## Post Install (Optional)
+
+```
+export $TODAY=$(date +%F)
+```
+
+```
+$ zfs snapshot -r zroot/ROOT/arch@initial-install-$TODAY
+```
+
+```
+$ pacman -Syu
+```
+
+```
+$ pacman -Sy \
+  hwinfo \
+  openssh \
+  man-db \
+  less \
+  ufw \
+  tmux \
+  unzip \
+  rsync 
+```
+
+```
+$ git clone https://aur.archlinux.org/paru.git
+$ cd paru && makepkg -si && cd ~
+```
+
+### More Packages (optional)
+
+```
+$ pacman -Sy \
+  neovim 
+```
+
+Clojure & Java
+
+```
+$ pacman -Sy \
+  jdk-openjdk \
+  clojure
+```
+
+```
+$ pacman -Sy \
+  greetd \
+  greetd-tui
+
+$ sed -i 's|^command = .*$|command = "tuigreet -c bash" /etc/greetd/config.toml
+```
+
+```
+$ pacman -Sy \
+  docker \
+  docker-compose
+```
+
+```
+$ pacman -Sy \
+  nvidia-open-dkms \
+  nvidia-container-toolkit 
+```
+
+```
+$ pacman -Sy \
+  pipewire \
+  pipewire-audio \
+  pipewire-jack \
+  pipewire-pulse \
+  pipewire-session-manager
+```
+
+```
+$ pacman -Sy \
+  bluez \
+  bluez-utils \ 
+  bluez-tools
+```
+
+```
+$ pacman -Sy 
+  cups
+```
+
+```
+$ pacman -Sy \
+  wayland \
+  wl-clipboard \
+  wlr-randr
+```
+
+```
+$ pacman -Sy \
+  sway \
+  swaylock \
+  swayidle \
+  swaybg \
+  autotiling \
+  waybar \
+  wofi \
+  foot \
+  ttf-hack-nerd \
+  ttf-font-awesome
+
+$ paru -S \
+  clipman
+```
+
+```
+$ pacman -Sy \
+  hyprland \
+  wlroots \
+  seatd \
+  xdg-desktop-portal-hyprland \
+  kitty
+```
+
+```
+$ paru -Sy ml4w-hyprland
+```
