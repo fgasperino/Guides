@@ -392,9 +392,23 @@ $ cd paru && makepkg -si && cd ~
 
 ```
 $ pacman -Sy \
+  syslog-ng
+
+$ systemctl enable syslog-ng@default.service
+$ systemctl start syslog-ng@default.service
+```
+
+```
+$ pacman -Sy \
   openssh \
   ufw \
   rsync
+
+$ systemctl enable openssh 
+$ systemctl start openssh 
+
+$ ufw enable 
+$ ufw allow SSH
 ```
 
 ```
@@ -414,12 +428,17 @@ $ pacman -Sy \
   greetd-tui
 
 $ sed -i 's|^command = .*$|command = "tuigreet -c bash" /etc/greetd/config.toml
+
+$ systemctl enable greetd
 ```
 
 ```
 $ pacman -Sy \
   docker \
   docker-compose
+
+$ systemctl enable docker
+$ systemctl start docker
 ```
 
 ```
@@ -443,17 +462,26 @@ $ pacman -Sy \
   bluez-utils \ 
   bluez-tools
 
+$ systemctl enable bluetooth 
+$ systemctl start bluetooth
+
 $ bluetoothctl
 ```
 
 ```
 $ pacman -Sy \
   cups
+
+$ systemctl enable cups 
+$ systemctl start cups
 ```
 
 ```
 $ pacman -Sy \
   seatd
+
+$ systemctl enable seatd
+$ systemctl start seatd
 ```
 
 ```
