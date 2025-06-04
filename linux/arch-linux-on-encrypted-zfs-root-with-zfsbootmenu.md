@@ -48,22 +48,22 @@ $ apk add sgdisk parted curl wget util-linux vim nano zfs efibootmgr zstd tar
 ### Partition Disks
 
 ```
-export DISK_1="/dev/nvme0n1"
+export DISK="/dev/nvme0n1"
 export EFI_PART="p1"
 export ZFS_PART="p2"
 ```
 
 ```
-wipefs --all --force "$DISK_1"
+wipefs --all --force "$DISK"
 ```
 
 ```
-$ sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI: System Partition" $DISK_1
-$ sgdisk -n 2:0:0 -t 2:bf00 -c 2:"ZFS Pool Member" $DISK_1
+$ sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI: System Partition" $DISK
+$ sgdisk -n 2:0:0 -t 2:bf00 -c 2:"ZFS Pool Member" $DISK
 ```
 
 ```
-$ partx -u $DISK_1
+$ partx -u $DISK
 $ mdev -s
 ```
 
@@ -84,7 +84,7 @@ efibootmgr \
 ### Create EFI Boot Filesystems
 
 ```
-$ mkfs.vfat -F32 "$DISK_1$EFI_PART"
+$ mkfs.vfat -F32 "$DISK$EFI_PART"
 ```
 
 ### Create ZFS Encryption Key
@@ -116,7 +116,7 @@ $ zpool create \
   -O keyformat=passphrase \
   -m none \
   zroot \
-  $DISK_1$ZFS_PART
+  $DISK$ZFS_PART
 ```
 
 Ensure it's correct.
@@ -161,7 +161,7 @@ $ df -h | grep "/mnt"
 
 ```
 $ mkdir -p /mnt/boot/efi
-$ mount $DISK_1$EFI_PART /mnt/boot/efi
+$ mount $DISK$EFI_PART /mnt/boot/efi
 ```
 
 ### Download and extract Arch Bootstrap Image
@@ -183,6 +183,7 @@ $ mkdir -p /mnt/etc/zfs && cp /etc/zfs/zroot.key /mnt/etc/zfs/zroot.key
 ```
 
 ```
+# Select a mirror from the mirrorlist.
 $ vi /mnt/etc/pacman.d/mirrorlist
 
 ```
@@ -224,12 +225,7 @@ $ pacman -Sy \
   linux-firmware \
   sof-firmware \
   fwupd \
-  networkmanager \
-  iwd \
-  dhclient \
   sudo \
-  vim \
-  nano \
   wget \
   curl \
   git \
@@ -238,6 +234,19 @@ $ pacman -Sy \
   efibootmgr \
   fakeroot \
   debugedit
+```
+
+```
+$ pacman -Sy \
+  vim \
+  nano
+```
+
+```
+$ pacman -Sy \
+  networkmanager \
+  iwd \
+  dhclient 
 ```
 
 ### Configure Base Arch Chroot
@@ -258,7 +267,7 @@ $ echo "localhost" > /etc/hostname
 ```
 
 ```
-$ echo "$DISK_1$EFI_PART /boot/efi vfat defaults,noatime 0 2" >> /etc/fstab
+$ echo "$DISK$EFI_PART /boot/efi vfat defaults,noatime 0 2" >> /etc/fstab
 $ echo "tmpfs /tmp tmpfs rw,nosuid,nodev,noexec,relatime,size=4G 0 0" >> /etc/fstab
 ```
 
@@ -349,9 +358,9 @@ $ generate-zbm
 ### Configure EFI Entries
 
 ```
-$ efibootmgr -c -d "$DISK_1" -p 1 \
+$ efibootmgr -c -d "$DISK" -p 1 \
   -L "ZFSBootMenu (NVME1)" \
-  -l '\EFI\ZBM\VMLINUZ.EFI'
+  -l '\EFI\ZBM\VMLINUZ-LINUX.EFI'
 ```
 
 ### Exit chroot, Unmount ZFS datasets, Reboot
@@ -367,7 +376,11 @@ $ zfs snapshot -r zroot/ROOT/arch@initial-install-$TODAY
 ```
 
 ```
-$ pacman -Syu
+# https://wiki.archlinux.org/title/NetworkManager
+
+$ nmcli device wifi list
+$ nmcli device wifi --ask connect <SSID> 
+$ nmcli connection show
 ```
 
 ```
@@ -400,11 +413,14 @@ $ pacman -Sy \
   ufw \
   rsync
 
-$ systemctl enable openssh 
-$ systemctl start openssh 
+$ systemctl enable ssh 
+$ systemctl start ssh 
 
 $ ufw enable 
 $ ufw allow SSH
+
+$ systemctl start ufw 
+$ systemctl enable ufw
 ```
 
 ```
@@ -421,9 +437,9 @@ $ pacman -Sy \
 ```
 $ pacman -Sy \
   greetd \
-  greetd-tui
+  greetd-tuigreet
 
-$ sed -i 's|^command = .*$|command = "tuigreet -c bash" /etc/greetd/config.toml
+$ sed -i 's|^command = .*$|command = "tuigreet -c bash"|' /etc/greetd/config.toml
 
 $ systemctl enable greetd
 ```
