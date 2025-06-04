@@ -183,7 +183,7 @@ $ mkdir -p /mnt/etc/zfs && cp /etc/zfs/zroot.key /mnt/etc/zfs/zroot.key
 ```
 
 ```
-$ vi /mnt/etc/pacman.d/mirrorlist:w
+$ vi /mnt/etc/pacman.d/mirrorlist
 
 ```
 
@@ -213,10 +213,6 @@ $ echo -e "\n[archzfs]\nServer = https://archzfs.com/\$repo/\$arch\nSigLevel = O
 ```
 
 ### Install Base Arch Packages
-
-```
-$ pacman -Sy
-```
 
 ```
 $ pacman -Sy \
@@ -330,7 +326,7 @@ $ cd zfsbootmenu && makepkg -si --noconfirm && cd ~
 ```
 $ exit
 $ userdel -r builduser
-$ sed -i /builduser/d' /etc/sudoers
+$ sed -i '/builduser/d' /etc/sudoers
 ```
 
 ### Configure ZFSBootMenu
