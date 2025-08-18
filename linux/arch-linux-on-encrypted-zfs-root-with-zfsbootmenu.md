@@ -545,3 +545,101 @@ $ pacman -Sy \
   xdg-desktop-portal-hyprland
 ```
 
+## Useful tooling
+
+### Snapshot creation before Pacman Install / Upgrade 
+
+/etc/pacman.d/hooks/90-zfs-pre-snapshot.hook:
+
+```
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Create recursive ZFS snapshot of zroot/ROOT/arch
+When = PreTransaction
+Exec = /usr/local/bin/zfs-pre-pacman-snapshot.sh
+```
+
+/usr/local/bin/zfs-pre-pacman-snapshot.sh
+
+```
+#!/bin/sh
+
+DATASET="zroot/ROOT/arch"
+TIMESTAMP=$(date +%F-%T)
+SNAPSHOT_NAME="$DATASET@pre-pacman-$TIMESTAMP"
+
+logger -t "zfs-pre-pacman-snapshot" "Creating ZFS snapshot of dataset ${DATASET} at ${SNAPSHOT_NAME}."
+
+zfs snapshot -r "$SNAPSHOT_NAME"
+```
+
+/etc/pacman.d/hooks/00-zfs-dkms-guard.hook
+
+```
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+# target the LTS kernel
+#Target = usr/lib/modules/*-lts/vmlinuz
+# ...or the mainline one
+# Target = !usr/lib/modules/*-rt*arch*/vmlinuz
+# Target = usr/lib/modules/*-arch*/vmlinuz
+# ...or all of them
+Target = usr/lib/modules/*/vmlinuz
+
+[Action]
+Description = Avoid ZFS-incompatible kernels
+When = PreTransaction
+Exec = /usr/local/bin/zfs_dkms_guard.sh
+AbortOnFail
+NeedsTargets
+```
+
+/usr/local/bin/zfs_dkms_guard.sh 
+
+```
+#!/usr/bin/env bash
+
+set -eo pipefail
+shopt -s inherit_errexit
+
+vercomp() {
+    readarray -td. one <<<"$1"
+    readarray -td. two <<<"$2"
+    for i in 0 1; do
+        if [[ "${one[$i]}" -lt "${two[$i]}" ]]; then
+            printf -- '-1'
+            return
+        fi
+        if [[ "${one[$i]}" -gt "${two[$i]}" ]]; then
+            printf '1'
+            return
+        fi
+    done
+    printf '0'
+}
+
+# requires ZFS >= 0.8.0
+zfs_meta_file="$(grep '/META\b' < <(pacman -Qql zfs-dkms))"
+zfs_linux_min="$(awk '/Linux-Minimum/ { print $2 }' "$zfs_meta_file")"
+zfs_linux_max="$(awk '/Linux-Maximum/ { print $2 }' "$zfs_meta_file")"
+
+while read -r target_path; do
+    kernel_version="$(sed -E 's|.*lib/modules/([[:digit:]]+\.[[:digit:]]+).*|\1|' <<<"$target_path")"
+    if [[ "$(vercomp "$kernel_version" "$zfs_linux_min")" -lt 0 ]]; then
+        printf 'Kernel version %s is below ZFS minimum compatible version %s!\n' "$kernel_version" "$zfs_linux_min" >&2
+        exit 1
+    fi
+    if [[ "$(vercomp "$kernel_version" "$zfs_linux_max")" -gt 0 ]]; then
+        printf 'Kernel version %s is above ZFS maximum compatible version %s!\n' "$kernel_version" "$zfs_linux_max" >&2
+        exit 1
+    fi
+done
+```
