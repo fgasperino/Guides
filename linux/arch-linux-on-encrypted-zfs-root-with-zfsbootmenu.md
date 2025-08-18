@@ -531,9 +531,17 @@ $ pacman -Sy \
 ```
 $ pacman -Sy \
   hyprland \
+  hyprcursor \
+  hyprgraphics \
+  hypridle \
+  hyprland-protocols \
+  hyprlang \
+  hyprlock \
+  hyprpaper \
+  hyprpolkitagent \
+  hyprshot \
+  hyprutils \
+  hyrpwayland-scanner \
   xdg-desktop-portal-hyprland
 ```
 
-```
-$ paru -Sy ml4w-hyprland
-```
